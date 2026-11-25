@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Flag health · Tern</title>
+<style>
+:root{--bg:#f7f7f5;--fg:#1c1c1a;--muted:#6b6a64;--line:#e2e0d9;--card:#fff;--err:#c4382c;--warn:#b7791f;--info:#6b6a64;--ok:#2f7d5b;--on:#2f7d5b;--off:#9c9a93}
+@media (prefers-color-scheme:dark){:root{--bg:#141513;--fg:#ecebe6;--muted:#a19f98;--line:#2d2f2c;--card:#1c1d1b;--err:#ef6b5e;--warn:#e0a643;--info:#a19f98;--ok:#5fc093;--on:#5fc093;--off:#77756f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1100px;margin:0 auto;padding:28px 16px 60px}h1{margin:0 0 4px;font-size:1.6rem}h2{margin:36px 0 12px;font-size:1.15rem}h3{font-size:1rem;margin:22px 0 6px}
+.muted,.sub{color:var(--muted)}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}.card b{display:block;font-size:1.8rem;line-height:1.1}.card span{color:var(--muted);font-size:.85rem}
+.card.error b{color:var(--err)}.card.warn b{color:var(--warn)}.card.ok b{color:var(--ok)}
+.tablewrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;min-width:640px}th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:.8rem;color:var(--muted);font-weight:600}
+tr:last-child td{border-bottom:0}td.state{font-weight:600;font-size:.85rem}td.on{color:var(--on)}td.off{color:var(--off)}td.none{color:var(--muted)}td.num{text-align:right}
+code{font:.88em ui-monospace,"Cascadia Code",Consolas,monospace}a{color:inherit}
+.pill{display:inline-block;border-radius:999px;padding:1px 9px;font-size:.78rem;font-weight:600;border:1px solid currentColor;margin:1px 0}
+.pill.error{color:var(--err)}.pill.warn{color:var(--warn)}.pill.info{color:var(--info)}.pill.ok{color:var(--ok)}
+.tag{display:inline-block;font-size:.72rem;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 5px;margin-left:4px}.tag.exp{color:var(--ok)}
+ul{padding-left:1.1rem}li{margin:4px 0}footer{margin-top:40px;color:var(--muted);font-size:.8rem}
+</style></head><body><main>
+<h1>Flag health: Tern</h1>
+<div class="sub">9 flags · Development, Staging, Production · 6 files scanned · stale after 30 days · generated 2026-11-25 17:21 UTC</div>
+<div class="cards"><div class="card error"><b>4</b><span>Errors</span></div><div class="card warn"><b>4</b><span>Warnings</span></div><div class="card info"><b>2</b><span>Info</span></div><div class="card ok"><b>2</b><span>Healthy flags</span></div><div class="card neutral"><b>6</b><span>Removable code refs</span></div></div>
+<h2>Flags by environment</h2>
+<div class="tablewrap"><table><thead><tr><th>Flag</th><th>Development</th><th>Staging</th><th>Production</th><th>Code refs</th><th>Status</th></tr></thead>
+<tbody><tr><td><code>checkout_v3</code> <span class="tag">not in Flagsmith</span></td><td class="state none">—</td><td class="state none">—</td><td class="state none">—</td><td class="num">1</td><td><span class="pill error">Missing in Flagsmith</span></td></tr>
+<tr><td><code>old_checkout</code> <span class="tag">archived</span></td><td class="state off">off</td><td class="state off">off</td><td class="state off">off</td><td class="num">1</td><td><span class="pill error">Archived but still in code</span></td></tr>
+<tr><td><code>onboarding_tuor</code> <span class="tag">not in Flagsmith</span></td><td class="state none">—</td><td class="state none">—</td><td class="state none">—</td><td class="num">1</td><td><span class="pill error">Missing in Flagsmith</span></td></tr>
+<tr><td><code>signup_cta</code> <span class="tag">multivariate</span><span class="tag exp">experiment running</span></td><td class="state on">on</td><td class="state on">on</td><td class="state on">on</td><td class="num">0</td><td><span class="pill error">Experiment running, flag not in code</span></td></tr>
+<tr><td><code>beta_dashboard</code> </td><td class="state off">off</td><td class="state off">off</td><td class="state on">on</td><td class="num">1</td><td><span class="pill warn">On in production only</span></td></tr>
+<tr><td><code>install_section</code> <span class="tag">multivariate</span><span class="tag exp">experiment completed</span></td><td class="state on">on</td><td class="state on">on</td><td class="state on">on</td><td class="num">1</td><td><span class="pill warn">Experiment finished, losing variants still in code</span></td></tr>
+<tr><td><code>legacy_search</code> </td><td class="state off">off</td><td class="state off">off</td><td class="state off">off</td><td class="num">2</td><td><span class="pill warn">Off everywhere</span></td></tr>
+<tr><td><code>new_pricing_page</code> </td><td class="state on">on</td><td class="state on">on</td><td class="state on">on</td><td class="num">1</td><td><span class="pill warn">Fully rolled out</span></td></tr>
+<tr><td><code>holiday_banner</code> </td><td class="state on">on</td><td class="state on">on</td><td class="state on">on</td><td class="num">0</td><td><span class="pill info">Not referenced in code</span></td></tr>
+<tr><td><code>onboarding_tour</code> </td><td class="state on">on</td><td class="state on">on</td><td class="state off">off</td><td class="num">0</td><td><span class="pill info">Not referenced in code</span></td></tr>
+<tr><td><code>dark_mode</code> <span class="tag">permanent</span></td><td class="state on">on</td><td class="state on">on</td><td class="state on">on</td><td class="num">1</td><td><span class="pill ok">Healthy</span></td></tr>
+<tr><td><code>rate_limit_v2</code> </td><td class="state off">off</td><td class="state on">on</td><td class="state off">off</td><td class="num">1</td><td><span class="pill ok">Healthy</span></td></tr></tbody></table></div>
+<h2>What to do</h2>
+<section><h3><span class="pill error">error</span> Archived but still in code</h3>
+<p>The flag is archived in Flagsmith but code still reads it. <b>Fix:</b> Remove the code path, or unarchive the flag.</p><ul>
+<li><code>old_checkout</code> · <code>web/src/checkout.js:5</code></li>
+</ul></section>
+<section><h3><span class="pill error">error</span> Experiment running, flag not in code</h3>
+<p>An experiment is running on a flag no code reads, so no exposures are recorded and it can never reach a result. <b>Fix:</b> Read the flag with getExperimentFlag() where the variants render, or stop the experiment.</p><ul>
+<li><code>signup_cta</code> <span class="muted">(running in Production)</span></li>
+</ul></section>
+<section><h3><span class="pill error">error</span> Missing in Flagsmith</h3>
+<p>Code asks for a flag that does not exist in this project, so it silently gets the SDK default. <b>Fix:</b> Create the flag in Flagsmith, or fix the typo in code.</p><ul>
+<li><code>checkout_v3</code> · <code>web/src/checkout.js:4</code></li>
+<li><code>onboarding_tuor</code> · <code>worker/jobs.py:8</code></li>
+</ul></section>
+<section><h3><span class="pill warn">warn</span> Experiment finished, losing variants still in code</h3>
+<p>Flagsmith has a decision for this experiment, but the code still branches on the variants that lost. <b>Fix:</b> Hard-code the winner, delete the losing branches, then delete the flag.</p><ul>
+<li><code>install_section</code> <span class="muted">(&quot;os_picker&quot; won in Production 21 days ago; losing still in code: one_liner, steps)</span> · <code>web/src/flags.js:4</code> <code>web/src/install.js:6</code> <code>web/src/install.js:13</code></li>
+</ul></section>
+<section><h3><span class="pill warn">warn</span> On in production only</h3>
+<p>Enabled in production but off in every other environment, so it was never exercised before release. <b>Fix:</b> Turn it on in staging/dev too, or check it was meant to be live.</p><ul>
+<li><code>beta_dashboard</code> · <code>web/src/checkout.js:10</code></li>
+</ul></section>
+<section><h3><span class="pill warn">warn</span> Off everywhere</h3>
+<p>Off in every environment for a long time. The guarded code is dead. <b>Fix:</b> Delete the guarded code, then delete the flag.</p><ul>
+<li><code>legacy_search</code> <span class="muted">(unchanged for 60 days)</span> · <code>web/src/search.js:4</code> <code>worker/jobs.py:16</code></li>
+</ul></section>
+<section><h3><span class="pill warn">warn</span> Fully rolled out</h3>
+<p>On with the same value in every environment, with no overrides, for a long time. The flag no longer decides anything. <b>Fix:</b> Hard-code the &quot;on&quot; path, delete the &quot;off&quot; path, then delete the flag.</p><ul>
+<li><code>new_pricing_page</code> <span class="muted">(unchanged for 45 days)</span> · <code>web/src/flags.js:5</code></li>
+</ul></section>
+<section><h3><span class="pill info">info</span> Not referenced in code</h3>
+<p>No string in the scanned code matches this flag name. <b>Fix:</b> Archive the flag in Flagsmith if no other service uses it.</p><ul>
+<li><code>holiday_banner</code> <span class="muted">(created 3 days ago)</span></li>
+<li><code>onboarding_tour</code> <span class="muted">(created 20 days ago)</span></li>
+</ul></section>
+<footer>Generated by flag-debt from Flagsmith (read-only Admin API) and a scan of the code.</footer>
+</main></body></html>

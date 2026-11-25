@@ -21,6 +21,8 @@ services:
   postgres:
     image: postgres:15.5-alpine
     restart: unless-stopped
+    # Flagsmith's API workers and task processor hold many connections; the default 100 runs out.
+    command: ['postgres', '-c', 'max_connections=300']
     environment:
       POSTGRES_PASSWORD: password
       POSTGRES_DB: flagsmith

@@ -81,10 +81,35 @@ export class FlagsmithAdmin {
           createdAt: f.created_date,
           archived: Boolean(f.is_archived),
           tags: (f.tags ?? []).map((t) => tagName.get(t) ?? String(t)),
+          options: (f.multivariate_options ?? []).map((o) => ({
+            id: o.id,
+            value: o.string_value ?? o.integer_value ?? o.boolean_value,
+          })),
           states: {},
+          experiments: [],
         },
       ]),
     );
+
+    for (const env of environments) {
+      // Flagsmith Experimentation (newer self-hosted and Cloud). Older instances have no
+      // endpoint; treat that as "no experiments" rather than failing the scan.
+      const experiments = await this.list(`environments/${env.api_key}/experiments/?page_size=100`)
+        .catch(() => []);
+      for (const x of experiments) {
+        const flag = flags.get(typeof x.feature === 'object' ? x.feature?.id : x.feature);
+        if (!flag) continue;
+        flag.experiments.push({
+          environment: env.name,
+          name: x.name,
+          status: x.status,
+          decision: x.rollout_decision,
+          winnerOptionId: typeof x.rollout_variant === 'object' ? x.rollout_variant?.id : x.rollout_variant,
+          startedAt: x.started_at,
+          endedAt: x.ended_at,
+        });
+      }
+    }
 
     for (const env of environments) {
       const states = await this.list(`environments/${env.api_key}/featurestates/?page_size=100`);

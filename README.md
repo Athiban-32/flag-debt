@@ -1,93 +1,115 @@
 # flag-debt
 
-**Find the feature flags you forgot to clean up by comparing your code with Flagsmith, on every pull request.**
+[![flag-debt demo (self-hosted Flagsmith)](https://github.com/Athiban-32/flag-debt/actions/workflows/demo.yml/badge.svg)](https://github.com/Athiban-32/flag-debt/actions/workflows/demo.yml)
 
-Feature flags are cheap to add and easy to forget. Months later nobody knows whether
-`new_pricing_page` still does anything, a typo like `onboarding_tuor` quietly returns the
-SDK default, and an archived flag is still read in production code. Flagsmith knows the
-flag states. Your repo knows where the flags are used. flag-debt joins the two and tells
-you what to delete, what is broken, and exactly which lines are involved.
+**Find the feature flags and experiments you forgot to clean up by comparing your code with Flagsmith, on every pull request.**
 
-Built for *Toggle Wars: The Flagsmith Experimentation Hackathon* (WeMakeDevs),
-**Track 03: Build on Open Source Flagsmith**. Developed and tested against self-hosted
-Flagsmith (Docker Compose in [`selfhost/`](selfhost/)); it works with Flagsmith Cloud too.
+Flags are cheap to add and easy to forget. Six months later nobody knows whether
+`new_pricing_page` still does anything. A typo like `onboarding_tuor` quietly returns the SDK
+default. An experiment finished weeks ago, but the code still branches on the variants that
+lost. Another experiment has run for a week on a flag no code reads, so it has recorded
+nothing. Flagsmith knows the flag and experiment states, and your repo knows where flags are
+used. **flag-debt joins the two** and tells you what to delete, what is broken, and which
+lines are involved.
 
-Real output against the self-hosted demo instance:
+Built for *Toggle Wars: The Flagsmith Experimentation Hackathon* (WeMakeDevs), **Track 03:
+Build on Open Source Flagsmith**. Developed and tested against **self-hosted Flagsmith**
+(Docker Compose in [`selfhost/`](selfhost/)); it works the same with Flagsmith Cloud.
 
-```
-flag-debt · project "Tern" · 8 flags · 3 environments · 6 files scanned
+- **CLI**: `npx github:Athiban-32/flag-debt`, with no dependencies
+- **GitHub Action**: a sticky PR comment with links to the exact lines, and a check that can block merges
+- **Flag health dashboard**: one self-contained HTML page per run
+- **One-command self-hosted demo**: `npm run quickstart`
 
-ERROR Archived but still in code  (1)
-      Remove the code path, or unarchive the flag.
-      - old_checkout  web/src/checkout.js:5
-ERROR Missing in Flagsmith  (2)
-      Create the flag in Flagsmith, or fix the typo in code.
-      - checkout_v3  web/src/checkout.js:4
-      - onboarding_tuor  worker/jobs.py:8
-WARN  On in production only  (1)
-      Turn it on in staging/dev too, or check it was meant to be live.
-      - beta_dashboard  web/src/checkout.js:10
-WARN  Off everywhere  (1)
-      Delete the guarded code, then delete the flag.
-      - legacy_search  [unchanged for 60 days]  web/src/search.js:4, worker/jobs.py:16
-WARN  Fully rolled out  (1)
-      Hard-code the "on" path, delete the "off" path, then delete the flag.
-      - new_pricing_page  [unchanged for 45 days]  web/src/flags.js:5
-INFO  Not referenced in code  (2)
-      Archive the flag in Flagsmith if no other service uses it.
-      - holiday_banner  [created 3 days ago]
-      - onboarding_tour  [created 20 days ago]
+![Flag health dashboard](docs/dashboard.jpg)
 
-3 errors, 3 warnings. 3 code references can go once stale flags are cleaned up.
-```
+See it on a pull request: [Athiban-32/flag-debt#1](https://github.com/Athiban-32/flag-debt/pull/1)
+fixes the `onboarding_tuor` typo, and the flag-debt comment shows the finding go away.
 
 ## What it finds
 
 | Finding | Severity | Meaning |
 |---|---|---|
+| **Experiment running, flag not in code** | error | An experiment is running on a flag no code reads, so it records no exposures and can never reach a result. |
 | **Missing in Flagsmith** | error | Code calls an SDK with a key the project doesn't have (typo, or never created). The SDK silently returns the default. |
 | **Archived but still in code** | error | The flag is archived in Flagsmith but code still reads it. |
-| **Fully rolled out** | warn | On, with the same value in every environment and no segment or identity overrides, unchanged for N days. The flag no longer decides anything. |
+| **Experiment finished, losing variants still in code** | warn | Flagsmith has a decision (for example "`os_picker` won"), but the code still branches on `one_liner` and `steps`. |
+| **Fully rolled out** | warn | On, with the same value in every environment and no segment or identity overrides, unchanged for N days. |
 | **Off everywhere** | warn | Off in every environment for N days. The guarded code is dead. |
-| **On in production only** | warn | Enabled in production but off in every other environment, so it was never exercised before release. |
-| **Not referenced in code** | info | No string in the scanned code matches the flag name. Archive it if no other service uses it. |
+| **On in production only** | warn | Enabled in production but off everywhere else, so it was never exercised before release. |
+| **Not referenced in code** | info | No string in the scanned code matches the flag name. |
 
-Each finding lists the `file:line` references. In a PR comment these link to the exact
-lines. Multivariate flags (experiments) are never called "fully rolled out", and flags
-tagged `permanent` (kill switches, ops toggles) are exempt from the staleness rules.
+Every finding comes with the reason, the fix, and the `file:line` references (linked in PR
+comments). Multivariate flags are never called "fully rolled out". Flags tagged `permanent`
+(kill switches, ops toggles) are exempt from staleness. A finished experiment gets a grace
+period (7 days by default) before it is reported.
 
-**How code is matched.** A flag counts as referenced when its name appears as a quoted
-string anywhere in the scanned files, so `FLAGS = { pricing: 'new_pricing_page' }` counts.
-Missing keys come from direct SDK calls (`hasFeature('x')`, `get_feature_value("x")`,
-`getBooleanValue('x')` in OpenFeature, and others), across JS/TS, Python, Go, Java, Kotlin,
-.NET, Ruby, PHP, Swift, Dart, Rust and Elixir.
+## How Flagsmith is used
 
-**How Flagsmith is used.** flag-debt is read-only. It calls the Flagsmith Admin API with an
-organisation API key: projects, features (type, tags, archived, created date), environments,
-the environment-level feature states (enabled, value, last updated), and segment and
-identity override counts. It never changes anything in Flagsmith.
+flag-debt is built on the Flagsmith Admin API and is **read-only**: it never changes a flag.
+With an organisation API key, it reads:
 
-**How this relates to Flagsmith's own features.** Flagsmith can tag flags as stale on time
-alone, and it has a code-references feature that counts where flags appear. flag-debt is
-complementary. It runs as a check on every pull request with no extra setup in Flagsmith,
-it catches the reverse direction (keys in code that don't exist in Flagsmith), it combines
-flag state with code (archived but still read; on everywhere with no overrides; on in prod
-only), and it tells you what to do and which lines to change.
+| Flagsmith data | Used for |
+|---|---|
+| Projects, environments | Which project to check, and which environments are production (`--production-pattern`) |
+| Features: type, tags, archived, created date, multivariate options | Missing / archived / unused, `permanent` exemptions, experiment variant values |
+| Environment feature states: enabled, value, last updated | Fully rolled out, off everywhere, production only, staleness age |
+| Segment and identity override counts | A flag that still targets someone is not "fully rolled out" |
+| **Experiments**: status, rollout decision, winning variant, start and end dates | Unwired running experiments; finished experiments with losing branches left in code |
 
-## Quick start: self-hosted demo (about 5 minutes)
+On the code side, a flag counts as referenced when its name appears as a quoted string
+(so `FLAGS = { pricing: 'new_pricing_page' }` counts). Missing keys come from direct SDK
+calls (`hasFeature('x')`, `getExperimentFlag('x')`, `get_feature_value("x")`, OpenFeature's
+`getBooleanValue('x')` and more) in JS/TS, Python, Go, Java, Kotlin, .NET, Ruby, PHP, Swift,
+Dart, Rust and Elixir. Losing experiment variants only count in files that read the flag or
+list two or more of its variants, so a common word like `steps` elsewhere is not reported.
 
-Requires Docker and Node 20.6+.
-
-```bash
-npm run selfhost:up      # self-hosted Flagsmith on http://localhost:8000 (first boot runs migrations)
-npm run seed             # creates the "Tern" demo project, a local admin and an API key → selfhost/.env.demo
-npm run demo             # scans example/ against it
-npm test                 # offline unit tests
+```mermaid
+flowchart LR
+  subgraph Flagsmith["Flagsmith (self-hosted or Cloud)"]
+    A[Admin API<br/>flags · states · overrides · experiments]
+  end
+  subgraph Repo[Your repository]
+    C[Source files<br/>JS · TS · Python · Go · …]
+  end
+  A -- read-only --> J{{flag-debt<br/>rules}}
+  C -- scan --> J
+  J --> T[Terminal report]
+  J --> P[Sticky PR comment<br/>+ job summary]
+  J --> H[HTML flag health dashboard]
+  J --> X[Exit code for CI gates]
 ```
 
-[`example/`](example/) is a small web app plus a Python worker with flag debt planted on purpose.
-[`example/README.md`](example/README.md) lists what should be found. The seed backdates flag
-timestamps with SQL on the local Postgres, so staleness shows without waiting 30 days.
+**How it fits with Flagsmith's own features.** Flagsmith can tag flags as stale on time alone,
+and it has a code-references feature that counts where flags appear. flag-debt is
+complementary. It runs as a PR check with no extra setup in Flagsmith. It catches the reverse
+direction (keys in code that don't exist). It joins flag and **experiment** state with code
+(archived but still read; a winner chosen but losing branches left; an experiment running on
+an unread flag). And it says what to do and which lines to change.
+
+## Quick start: self-hosted Flagsmith demo
+
+Requires Docker and Node 20.6+. One command:
+
+```bash
+npm run quickstart
+```
+
+This does three things:
+1. Starts self-hosted Flagsmith (Postgres, API, task processor) on http://localhost:8000 and
+   waits until it is healthy. The first boot runs database migrations and can take several minutes.
+2. Runs [`selfhost/seed.mjs`](selfhost/seed.mjs), which creates a local admin, the "Tern" demo
+   project (10 flags in three environments, an identity override, a `permanent` tag, a
+   warehouse connection, two metrics and two experiments: one completed with `os_picker`
+   winning, one running), and an organisation API key. Details are written to the gitignored
+   `selfhost/.env.demo`.
+3. Scans [`example/`](example/), a small web app plus a Python worker with flag debt planted on
+   purpose (the expected findings are listed in [`example/README.md`](example/README.md)). It
+   prints the report and writes `flag-health.html`.
+
+The seed backdates timestamps with SQL on the local Postgres, so staleness shows without
+waiting 30 days. Other commands: `npm run selfhost:up`, `npm run seed`, `npm run demo`,
+`npm run selfhost:down`, `npm test` (offline unit tests).
 
 ## Use it on your project
 
@@ -96,11 +118,20 @@ timestamps with SQL on the local Postgres, so staleness shows without waiting 30
 ```bash
 export FLAGSMITH_API_URL=https://flagsmith.your-company.internal/api/v1/   # or https://api.flagsmith.com/api/v1/
 export FLAGSMITH_ADMIN_API_KEY=...        # Organisation Settings → API Keys
-npx github:Athiban-32/flag-debt --src . --project "My Project" --stale-days 30
+npx github:Athiban-32/flag-debt --src . --project "My Project"
+npx github:Athiban-32/flag-debt --src . --format html --output flag-health.html
 ```
 
-Options: `--format text|markdown|json`, `--output report.md`, `--fail-on error|warn|none`,
-`--production-pattern prod`, `--comment` (PR comment from Actions). Run `--help` for all of them.
+| Option | Default | |
+|---|---|---|
+| `--src <dir>` | `.` | Code to scan |
+| `--project <id\|name>` | the only project | Flagsmith project |
+| `--stale-days <n>` | `30` | Days unchanged before a flag is stale |
+| `--production-pattern <regex>` | `prod` | Matches production environment names |
+| `--format text\|markdown\|json\|html` | `text` | `html` writes the dashboard |
+| `--output <file>` | | Also write the report to a file |
+| `--fail-on error\|warn\|none` | `none` | Exit 1 when findings at this level exist |
+| `--comment` | | Post or update the PR comment (in GitHub Actions) |
 
 ### GitHub Action
 
@@ -115,17 +146,19 @@ jobs:
     runs-on: ubuntu-latest   # use a self-hosted runner if Flagsmith is only on your network
     steps:
       - uses: actions/checkout@v4
-      - uses: Athiban-32/flag-debt@main
+      - uses: Athiban-32/flag-debt@v1
         with:
           api-url: https://flagsmith.your-company.internal/api/v1/
           admin-api-key: ${{ secrets.FLAGSMITH_ADMIN_API_KEY }}
           project: My Project
-          fail-on: error        # block PRs that read missing or archived flags
+          fail-on: error               # block PRs that read missing or archived flags
+          dashboard: flag-health.html  # optional: upload it with actions/upload-artifact
 ```
 
-The report is posted as one PR comment that is updated on each push, and it is also
-written to the job summary. This repo's [demo workflow](.github/workflows/demo.yml) runs the
-whole thing in CI: it boots self-hosted Flagsmith in the runner, seeds it, and comments on the PR.
+The report is posted as one PR comment that is updated on each push, and written to the job
+summary. This repo's [demo workflow](.github/workflows/demo.yml) runs the whole thing in CI:
+it boots self-hosted Flagsmith in the runner, seeds it, comments on the PR and uploads the
+dashboard as an artifact.
 
 ### Config file (optional)
 
@@ -143,14 +176,24 @@ whole thing in CI: it boots self-hosted Flagsmith in the runner, seeds it, and c
 }
 ```
 
+## Limits
+
+- **Single repo:** a flag read only by another repository or a mobile app shows as "not
+  referenced". List it in `ignoreFlags`, or run flag-debt in each repo.
+- **Dynamic keys:** keys built at runtime (`hasFeature(prefix + name)`) can't be seen;
+  `extraPatterns` covers wrapper functions.
+- **Experiments:** these need a Flagsmith version with Experimentation. On older instances the
+  experiment rules are skipped and everything else works.
+
 ## Project layout
 
 ```
 bin/flag-debt.mjs       CLI
 src/scan-code.mjs       source walker: string literals + SDK-call keys
-src/flagsmith.mjs       read-only Flagsmith Admin API client
+src/flagsmith.mjs       read-only Flagsmith Admin API client (flags, states, overrides, experiments)
 src/analyse.mjs         the rules
 src/report.mjs          text / Markdown / JSON output
+src/html.mjs            flag health dashboard
 src/github.mjs          sticky PR comment
 action.yml              GitHub Action
 selfhost/               Docker Compose for self-hosted Flagsmith + seed script
@@ -158,7 +201,7 @@ example/                demo codebase with planted flag debt
 test/                   node:test unit tests (no network)
 ```
 
-No runtime dependencies: Node's built-in `fetch`, `node:test` and `parseArgs` only.
+No runtime dependencies: only Node's built-in `fetch`, `node:test` and `parseArgs`.
 
 ## License
 

@@ -5,7 +5,8 @@ import path from 'node:path';
 import { scanCode, DEFAULT_SDK_METHODS, DEFAULT_IGNORE } from '../src/scan-code.mjs';
 import { FlagsmithAdmin } from '../src/flagsmith.mjs';
 import { analyse } from '../src/analyse.mjs';
-import { toText, toMarkdown, toJson } from '../src/report.mjs';
+import { toText, toMarkdown, toJson, describe } from '../src/report.mjs';
+import { toHtml } from '../src/html.mjs';
 import { prContext, upsertComment } from '../src/github.mjs';
 
 const HELP = `flag-debt: find stale, unused and missing feature flags by comparing your code with Flagsmith
@@ -17,7 +18,7 @@ Usage: flag-debt [options]
   --project <id|name>         Flagsmith project (default: $FLAGSMITH_PROJECT, or the only project)
   --stale-days <n>            days unchanged before a flag counts as stale (default: 30)
   --production-pattern <re>   regex for production environment names (default: prod)
-  --format <text|markdown|json>  output format (default: text)
+  --format <text|markdown|json|html>  output format (default: text; html = flag health dashboard)
   --output <file>             also write the report to a file
   --fail-on <error|warn|none> exit 1 if findings at this level exist (default: none)
   --comment                   post/update a sticky PR comment (needs GITHUB_TOKEN, runs in Actions)
@@ -44,6 +45,10 @@ const { values: args } = parseArgs({
 if (args.help) {
   console.log(HELP);
   process.exit(0);
+}
+if (!['text', 'markdown', 'json', 'html'].includes(args.format)) {
+  console.error(`flag-debt: unknown --format "${args.format}" (text, markdown, json or html)`);
+  process.exit(2);
 }
 
 async function loadConfig(src) {
@@ -93,10 +98,17 @@ async function main() {
     prefix: path.relative(env.GITHUB_WORKSPACE || src, src).split(path.sep).join('/').replace(/(.)$/, '$1/'),
   };
   const markdown = toMarkdown(result, link);
-  const rendered =
-    args.format === 'json' ? toJson(result) : args.format === 'markdown' ? markdown : toText(result);
+  const formats = {
+    json: () => toJson(result),
+    markdown: () => markdown,
+    html: () => toHtml(result, { link, describe }),
+    text: () => toText(result),
+  };
+  if (!formats[args.format]) throw new Error(`Unknown --format ${args.format}`);
+  const rendered = formats[args.format]();
 
-  console.log(rendered);
+  // An HTML page is meant for a file; print the readable text report to the terminal instead.
+  console.log(args.format === 'html' && args.output ? toText(result) : rendered);
   if (args.output) await writeFile(args.output, rendered + '\n');
   if (env.GITHUB_STEP_SUMMARY) await appendFile(env.GITHUB_STEP_SUMMARY, markdown + '\n');
 

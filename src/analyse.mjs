@@ -6,6 +6,18 @@
 // }] }
 
 export const RULES = {
+  experiment_unwired: {
+    severity: 'error',
+    title: 'Experiment running, flag not in code',
+    why: 'An experiment is running on a flag no code reads, so no exposures are recorded and it can never reach a result.',
+    fix: 'Read the flag with getExperimentFlag() where the variants render, or stop the experiment.',
+  },
+  experiment_done: {
+    severity: 'warn',
+    title: 'Experiment finished, losing variants still in code',
+    why: 'Flagsmith has a decision for this experiment, but the code still branches on the variants that lost.',
+    fix: 'Hard-code the winner, delete the losing branches, then delete the flag.',
+  },
   missing: {
     severity: 'error',
     title: 'Missing in Flagsmith',
@@ -52,6 +64,61 @@ function daysSince(iso, now) {
   return Math.floor((now - Date.parse(iso)) / DAY);
 }
 
+// A completed experiment whose losing variant values still appear in code. Variant values are
+// often short words ("steps"), so they only count in files that read the flag or that list
+// at least two of its variant values (a variants map or switch).
+function experimentDebt(flag, code, flagRefs, now, graceDays) {
+  const finished = (flag.experiments ?? [])
+    .filter((x) => x.status === 'completed' && x.decision)
+    .sort((a, b) => String(a.endedAt).localeCompare(String(b.endedAt)))
+    .at(-1);
+  if (!finished) return null;
+  const ageDays = daysSince(finished.endedAt, now);
+  if (ageDays !== null && ageDays < graceDays) return null;
+
+  const control = flag.states[finished.environment]?.value;
+  const values = [...new Set([control, ...(flag.options ?? []).map((o) => o.value)]
+    .filter((v) => v !== null && v !== undefined && v !== '')
+    .map(String))];
+  let winner = null;
+  if (finished.decision === 'variant') {
+    const w = (flag.options ?? []).find((o) => o.id === finished.winnerOptionId);
+    winner = w ? String(w.value) : null;
+  } else if (finished.decision === 'control') {
+    winner = control == null ? null : String(control);
+  }
+
+  const relevantFiles = new Set(flagRefs.map((r) => r.file));
+  const filesPerValue = new Map(values.map((v) => [v, new Set((code.literals.get(v) ?? []).map((r) => r.file))]));
+  const counts = new Map();
+  for (const files of filesPerValue.values()) for (const f of files) counts.set(f, (counts.get(f) ?? 0) + 1);
+  for (const [f, n] of counts) if (n >= 2) relevantFiles.add(f);
+
+  const losers = values.filter((v) => v !== winner);
+  const loserRefs = [];
+  const losingInCode = [];
+  for (const v of losers) {
+    const hits = (code.literals.get(v) ?? []).filter((r) => relevantFiles.has(r.file));
+    if (hits.length) losingInCode.push(v);
+    loserRefs.push(...hits);
+  }
+  if (!loserRefs.length) return null;
+
+  const seen = new Set();
+  const refs = [...flagRefs, ...loserRefs]
+    .filter((r) => !seen.has(`${r.file}:${r.line}`) && seen.add(`${r.file}:${r.line}`))
+    .sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
+  return {
+    refs,
+    ageDays,
+    environment: finished.environment,
+    experiment: finished.name,
+    decision: finished.decision,
+    winner,
+    losers: losingInCode,
+  };
+}
+
 export function analyse(project, code, options = {}) {
   const now = options.now ?? Date.now();
   const staleDays = options.staleDays ?? 30;
@@ -74,6 +141,16 @@ export function analyse(project, code, options = {}) {
       if (refs.length) add('archived_in_use', flag, { refs });
       continue;
     }
+
+    const experiments = flag.experiments ?? [];
+    const running = experiments.filter((x) => x.status === 'running');
+    if (running.length && !refs.length) {
+      add('experiment_unwired', flag, { refs, environments: running.map((x) => x.environment) });
+      continue;
+    }
+    const done = experimentDebt(flag, code, refs, now, options.experimentGraceDays ?? 7);
+    if (done) add('experiment_done', flag, done);
+
     if (!refs.length) add('unused', flag, { refs, ageDays: daysSince(flag.createdAt, now) });
     if (permanent || !states.length) continue;
 
@@ -110,11 +187,32 @@ export function analyse(project, code, options = {}) {
   );
 
   const removableRefs = findings
-    .filter((f) => f.rule === 'stale_on' || f.rule === 'stale_off')
+    .filter((f) => ['stale_on', 'stale_off', 'experiment_done'].includes(f.rule))
     .reduce((n, f) => n + f.refs.length, 0);
+
+  // Per-flag table for the HTML dashboard: state in each environment + what was found.
+  const rulesByFlag = new Map();
+  for (const f of findings) (rulesByFlag.get(f.flag) ?? rulesByFlag.set(f.flag, []).get(f.flag)).push(f.rule);
+  const flagTable = project.flags.map((flag) => ({
+    name: flag.name,
+    type: flag.type,
+    archived: flag.archived,
+    tags: flag.tags,
+    experiment: (flag.experiments ?? []).map((x) => x.status).sort().at(-1) ?? null,
+    states: Object.fromEntries(envNames.map((n) => [n, flag.states[n]?.enabled ?? null])),
+    refs: (code.literals.get(flag.name) ?? []).length,
+    rules: rulesByFlag.get(flag.name) ?? [],
+  }));
+  for (const [key] of code.sdkKeys) {
+    if (!byName.has(key)) {
+      flagTable.push({ name: key, type: null, archived: false, tags: [], experiment: null,
+        states: {}, refs: code.sdkKeys.get(key).length, rules: rulesByFlag.get(key) ?? [] });
+    }
+  }
 
   return {
     findings,
+    flags: flagTable,
     summary: {
       project: project.name,
       environments: envNames,

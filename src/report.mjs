@@ -12,7 +12,13 @@ function locLink(r, link) {
   return `[\`${locText(r)}\`](${link.serverUrl}/${link.repo}/blob/${link.sha}/${link.prefix}${r.file}#L${r.line})`;
 }
 
-function describe(f) {
+export function describe(f) {
+  if (f.rule === 'experiment_done') {
+    const won = f.decision === 'disable' ? 'decision: turn it off' : `"${f.winner}" won`;
+    const when = f.ageDays != null ? ` ${f.ageDays} days ago` : '';
+    return `${won} in ${f.environment}${when}; losing still in code: ${f.losers.join(', ')}`;
+  }
+  if (f.rule === 'experiment_unwired') return `running in ${f.environments.join(', ')}`;
   if (f.ageDays != null && (f.rule === 'stale_on' || f.rule === 'stale_off')) {
     return `unchanged for ${f.ageDays} days`;
   }

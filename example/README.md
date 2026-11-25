@@ -6,7 +6,8 @@ should find:
 
 | Flag | In Flagsmith | In code | Expected finding |
 |---|---|---|---|
-| `install_section` | multivariate experiment | yes | none (healthy) |
+| `install_section` | experiment completed 21 days ago, `os_picker` won | yes, still branches on `one_liner` / `steps` | Experiment finished, losing variants still in code |
+| `signup_cta` | experiment **running** in Production | no | Experiment running, flag not in code |
 | `rate_limit_v2` | on in Staging, identity override | yes | none (still rolling out) |
 | `dark_mode` | on everywhere for months, tagged `permanent` | yes | none (exempt) |
 | `new_pricing_page` | on everywhere, same value, 45 days | yes | Fully rolled out |
