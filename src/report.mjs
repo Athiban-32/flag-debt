@@ -69,9 +69,11 @@ export function toMarkdown({ findings, summary }, link) {
     return out.join('\n');
   }
   out.push('| | Finding | Count |', '|---|---|---|');
-  for (const [rule, n] of Object.entries(summary.counts)) {
-    if (n) out.push(`| ${ICON[RULES[rule].severity]} | ${RULES[rule].title} | ${n} |`);
-  }
+  const rank = { error: 0, warn: 1, info: 2 };
+  const rows = Object.entries(summary.counts)
+    .filter(([, n]) => n)
+    .sort(([a], [b]) => rank[RULES[a].severity] - rank[RULES[b].severity]);
+  for (const [rule, n] of rows) out.push(`| ${ICON[RULES[rule].severity]} | ${RULES[rule].title} | ${n} |`);
   out.push('');
   if (summary.removableRefs) {
     out.push(
