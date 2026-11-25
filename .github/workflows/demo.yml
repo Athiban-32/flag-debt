@@ -1,0 +1,44 @@
+# End-to-end demo in CI: boots self-hosted Flagsmith in the runner, seeds the demo project,
+# then runs this repo's own action against example/ and comments on the pull request.
+# In your repo you only need the last step, pointed at your own Flagsmith (see README).
+name: flag-debt demo (self-hosted Flagsmith)
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  flag-debt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Start self-hosted Flagsmith
+        run: docker compose -f selfhost/docker-compose.yml up -d --wait flagsmith
+
+      - name: Seed demo project
+        run: |
+          node selfhost/seed.mjs
+          grep '^FLAGSMITH_' selfhost/.env.demo | while IFS='=' read -r k v; do
+            if [ "$k" = FLAGSMITH_ADMIN_API_KEY ]; then echo "::add-mask::$v"; fi
+            echo "$k=$v" >> "$GITHUB_ENV"
+          done
+
+      - name: Flag debt report
+        uses: ./
+        with:
+          api-url: ${{ env.FLAGSMITH_API_URL }}
+          admin-api-key: ${{ env.FLAGSMITH_ADMIN_API_KEY }}
+          project: ${{ env.FLAGSMITH_PROJECT }}
+          src: example
+          fail-on: none
+          comment: ${{ github.event_name == 'pull_request' }}

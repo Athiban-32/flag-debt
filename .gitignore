@@ -1,0 +1,4 @@
+node_modules/
+selfhost/.env.demo
+*.log
+flag-debt-report.*

@@ -1,0 +1,65 @@
+name: Flagsmith flag debt
+description: Compare your code with Flagsmith and report stale, unused, archived and missing feature flags on the pull request.
+author: Athiban-32
+branding:
+  icon: flag
+  color: green
+
+inputs:
+  api-url:
+    description: Flagsmith API URL, e.g. https://flagsmith.internal.example.com/api/v1/ (self-hosted) or https://api.flagsmith.com/api/v1/
+    required: true
+  admin-api-key:
+    description: Flagsmith organisation API key (read-only use). Store it as a secret.
+    required: true
+  project:
+    description: Flagsmith project id or name (optional when the key sees one project)
+    required: false
+    default: ''
+  src:
+    description: Directory to scan
+    required: false
+    default: '.'
+  stale-days:
+    description: Days unchanged before a flag counts as stale
+    required: false
+    default: '30'
+  production-pattern:
+    description: Regex that matches production environment names
+    required: false
+    default: 'prod'
+  fail-on:
+    description: Fail the check on findings at this level (error, warn or none)
+    required: false
+    default: 'error'
+  comment:
+    description: Post or update a sticky comment on the pull request
+    required: false
+    default: 'true'
+  github-token:
+    description: Token used to comment (needs pull-requests write)
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 20
+    - name: Scan for flag debt
+      shell: bash
+      env:
+        FLAGSMITH_API_URL: ${{ inputs.api-url }}
+        FLAGSMITH_ADMIN_API_KEY: ${{ inputs.admin-api-key }}
+        FLAGSMITH_PROJECT: ${{ inputs.project }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        IN_SRC: ${{ inputs.src }}
+        IN_STALE: ${{ inputs.stale-days }}
+        IN_PROD: ${{ inputs.production-pattern }}
+        IN_FAIL: ${{ inputs.fail-on }}
+        IN_COMMENT: ${{ inputs.comment }}
+      run: |
+        args=(--src "$IN_SRC" --stale-days "$IN_STALE" --production-pattern "$IN_PROD" --fail-on "$IN_FAIL")
+        if [ "$IN_COMMENT" = "true" ]; then args+=(--comment); fi
+        node "$GITHUB_ACTION_PATH/bin/flag-debt.mjs" "${args[@]}"
