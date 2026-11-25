@@ -23,6 +23,9 @@ Usage: flag-debt [options]
   --fail-on <error|warn|none> exit 1 if findings at this level exist (default: none)
   --comment                   post/update a sticky PR comment (needs GITHUB_TOKEN, runs in Actions)
   --config <file>             config file (default: <src>/.flagdebt.json if present)
+  --ui-url <url>              Flagsmith dashboard URL for "Open in Flagsmith" links
+                              (default: derived from the API URL)
+  --no-color                  plain terminal output (also: NO_COLOR=1; FORCE_COLOR=1 forces colour)
 
 Auth (read-only): FLAGSMITH_ADMIN_API_KEY (organisation API key) or FLAGSMITH_TOKEN.`;
 
@@ -38,6 +41,8 @@ const { values: args } = parseArgs({
     'fail-on': { type: 'string', default: 'none' },
     comment: { type: 'boolean', default: false },
     config: { type: 'string' },
+    'ui-url': { type: 'string' },
+    'no-color': { type: 'boolean', default: false },
     help: { type: 'boolean', short: 'h' },
   },
 });
@@ -49,6 +54,24 @@ if (args.help) {
 if (!['text', 'markdown', 'json', 'html'].includes(args.format)) {
   console.error(`flag-debt: unknown --format "${args.format}" (text, markdown, json or html)`);
   process.exit(2);
+}
+
+// Colour only for a real terminal, unless the user forces it either way.
+function useColor() {
+  const env = process.env;
+  if (args['no-color'] || 'NO_COLOR' in env) return false;
+  if (env.FORCE_COLOR && env.FORCE_COLOR !== '0') return true;
+  return Boolean(process.stdout.isTTY) && env.TERM !== 'dumb';
+}
+
+// The dashboard UI that matches an API URL: Flagsmith Cloud's API and app are on different
+// hosts; a self-hosted instance serves both from one origin.
+function uiBaseFor(apiUrl) {
+  const u = new URL(apiUrl);
+  if (u.hostname === 'api.flagsmith.com' || u.hostname === 'edge.api.flagsmith.com') {
+    return 'https://app.flagsmith.com';
+  }
+  return `${u.origin}${u.pathname.replace(/\/api\/v1\/?$/, '')}`.replace(/\/$/, '');
 }
 
 async function loadConfig(src) {
@@ -66,8 +89,9 @@ async function main() {
   const config = await loadConfig(src);
   const env = process.env;
 
+  const apiUrl = args['api-url'] ?? env.FLAGSMITH_API_URL ?? config.apiUrl ?? 'http://localhost:8000/api/v1/';
   const admin = new FlagsmithAdmin({
-    apiUrl: args['api-url'] ?? env.FLAGSMITH_API_URL ?? config.apiUrl,
+    apiUrl,
     apiKey: env.FLAGSMITH_ADMIN_API_KEY,
     token: env.FLAGSMITH_TOKEN,
   });
@@ -98,17 +122,26 @@ async function main() {
     prefix: path.relative(env.GITHUB_WORKSPACE || src, src).split(path.sep).join('/').replace(/(.)$/, '$1/'),
   };
   const markdown = toMarkdown(result, link);
+  const prodEnv =
+    project.environments.find((e) => new RegExp(args['production-pattern'] ?? config.productionPattern ?? 'prod', 'i').test(e.name)) ??
+    project.environments[0];
+  const flagsmithLinks = prodEnv && {
+    base: (args['ui-url'] ?? env.FLAGSMITH_UI_URL ?? config.uiUrl ?? uiBaseFor(apiUrl)).replace(/\/$/, ''),
+    projectId: project.id,
+    environmentKey: prodEnv.apiKey,
+    environmentName: prodEnv.name,
+  };
   const formats = {
     json: () => toJson(result),
     markdown: () => markdown,
-    html: () => toHtml(result, { link, describe }),
-    text: () => toText(result),
+    html: () => toHtml(result, { link, describe, flagsmith: flagsmithLinks }),
+    text: () => toText(result, { color: useColor() }),
   };
   if (!formats[args.format]) throw new Error(`Unknown --format ${args.format}`);
   const rendered = formats[args.format]();
 
   // An HTML page is meant for a file; print the readable text report to the terminal instead.
-  console.log(args.format === 'html' && args.output ? toText(result) : rendered);
+  console.log(args.format === 'html' && args.output ? toText(result, { color: useColor() }) : rendered);
   if (args.output) await writeFile(args.output, rendered + '\n');
   if (env.GITHUB_STEP_SUMMARY) await appendFile(env.GITHUB_STEP_SUMMARY, markdown + '\n');
 
