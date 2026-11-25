@@ -36,6 +36,10 @@ inputs:
     description: Post or update a sticky comment on the pull request
     required: false
     default: 'true'
+  dashboard:
+    description: Also write the HTML flag-health dashboard to this path (e.g. flag-health.html), ready to upload as an artifact
+    required: false
+    default: ''
   github-token:
     description: Token used to comment (needs pull-requests write)
     required: false
@@ -59,7 +63,9 @@ runs:
         IN_PROD: ${{ inputs.production-pattern }}
         IN_FAIL: ${{ inputs.fail-on }}
         IN_COMMENT: ${{ inputs.comment }}
+        IN_DASHBOARD: ${{ inputs.dashboard }}
       run: |
         args=(--src "$IN_SRC" --stale-days "$IN_STALE" --production-pattern "$IN_PROD" --fail-on "$IN_FAIL")
         if [ "$IN_COMMENT" = "true" ]; then args+=(--comment); fi
+        if [ -n "$IN_DASHBOARD" ]; then args+=(--format html --output "$IN_DASHBOARD"); fi
         node "$GITHUB_ACTION_PATH/bin/flag-debt.mjs" "${args[@]}"

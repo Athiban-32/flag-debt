@@ -25,8 +25,14 @@ const ENVS = ['Development', 'Staging', 'Production'];
 // The demo project. `on` lists environments where the flag is enabled; `ageDays` backdates
 // the flag and its environment states so staleness can be shown without waiting weeks.
 const FLAGS = [
-  { name: 'install_section', on: ENVS, value: 'one_liner', ageDays: 5,
-    variants: ['steps', 'os_picker'], description: 'A/B/C test of the install section' },
+  { name: 'install_section', on: ENVS, value: 'one_liner', ageDays: 40,
+    variants: ['steps', 'os_picker'], description: 'A/B/C test of the install section',
+    experiment: { env: 'Production', metric: 'install_command_copied', winner: 'os_picker', endedDaysAgo: 21,
+      hypothesis: 'An OS picker with a native command gets more installs copied than one curl line' } },
+  { name: 'signup_cta', on: ENVS, value: 'Start free', ageDays: 4,
+    variants: ['Try Tern free', 'Get started'], description: 'Signup button copy test',
+    experiment: { env: 'Production', metric: 'signup_clicked',
+      hypothesis: 'Action-led button copy gets more signup clicks' } },
   { name: 'rate_limit_v2', on: ['Staging'], ageDays: 40,
     identityOverride: { env: 'Production', identifier: 'acme-corp' },
     description: 'New rate limiter, rolling out to one customer in prod' },
@@ -113,13 +119,24 @@ async function writeEnvFile(values) {
   ].join('\n'));
 }
 
-function psql(sql) {
-  execFileSync(
-    'docker',
-    ['compose', '-f', path.join(here, 'docker-compose.yml'), 'exec', '-T', 'postgres',
-      'psql', '-U', 'postgres', '-d', 'flagsmith', '-v', 'ON_ERROR_STOP=1', '-c', sql],
-    { stdio: ['ignore', 'ignore', 'inherit'] },
-  );
+// Runs SQL against the local Postgres container in one transaction (one connection),
+// retrying briefly if Flagsmith's workers are holding every connection.
+async function psql(statements) {
+  const sql = ['BEGIN;', ...statements, 'COMMIT;'].join('\n');
+  for (let attempt = 1; ; attempt++) {
+    try {
+      execFileSync(
+        'docker',
+        ['compose', '-f', path.join(here, 'docker-compose.yml'), 'exec', '-T', 'postgres',
+          'psql', '-U', 'postgres', '-d', 'flagsmith', '-v', 'ON_ERROR_STOP=1', '-q'],
+        { input: sql, stdio: ['pipe', 'ignore', 'pipe'] },
+      );
+      return;
+    } catch (err) {
+      if (attempt >= 5) throw new Error(`psql failed: ${err.stderr?.toString().trim() || err.message}`);
+      await sleep(2000 * attempt);
+    }
+  }
 }
 
 async function main() {
@@ -158,8 +175,10 @@ async function main() {
     };
     if (f.variants) {
       const pct = Math.floor(100 / (f.variants.length + 1));
+      // Experimentation needs a key on every variation, or no exposures are recorded.
       body.multivariate_options = f.variants.map((v) => ({
         type: 'unicode', string_value: v, default_percentage_allocation: pct,
+        key: v.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
       }));
     }
     const feature = await call('POST', `projects/${project.id}/features/`, body);
@@ -188,13 +207,67 @@ async function main() {
     console.log(`  ${f.name.padEnd(18)} on: ${f.on.join(', ') || '(nowhere)'}${f.archived ? ' · archived' : ''}`);
   }
 
+  // Experimentation: warehouse connection, metrics, and one experiment per flag that has one.
+  const experimentIds = [];
+  const withExperiments = FLAGS.filter((f) => f.experiment);
+  for (const envName of new Set(withExperiments.map((f) => f.experiment.env))) {
+    const env = envs[envName];
+    const conns = await call('GET', `environments/${env.api_key}/warehouse-connections/`);
+    if (!results(conns).length) {
+      await call('POST', `environments/${env.api_key}/warehouse-connections/`, {
+        warehouse_type: 'flagsmith', name: 'Flagsmith (self-hosted Postgres)',
+      });
+    }
+  }
+  for (const f of withExperiments) {
+    const x = f.experiment;
+    const env = envs[x.env];
+    const metric = await call('POST', `environments/${env.api_key}/experiment-metrics/`, {
+      name: x.metric, aggregation: 'occurrence', direction: 'up', definition: { version: 1, event: x.metric },
+    });
+    const feature = await call('GET', `projects/${project.id}/features/${f.id}/`);
+    const share = Math.floor(100 / (feature.multivariate_options.length + 1));
+    const exp = await call('POST', `environments/${env.api_key}/experiments/`, {
+      feature: f.id,
+      name: `${f.name} test`,
+      hypothesis: x.hypothesis,
+      metrics: [{ metric: metric.id, expected_direction: 'increase' }],
+      experiment_rollout: {
+        enabled: true,
+        rollout_percentage: 100,
+        feature_state_value: { type: 'string', value: f.value },
+        multivariate_feature_state_values: feature.multivariate_options.map((o) => ({
+          multivariate_feature_option: o.id, percentage_allocation: share,
+        })),
+      },
+    });
+    await call('POST', `environments/${env.api_key}/experiments/${exp.id}/start/`);
+    let state = 'running';
+    if (x.winner) {
+      const winner = feature.multivariate_options.find((o) => o.string_value === x.winner);
+      await call('POST', `environments/${env.api_key}/experiments/${exp.id}/complete/`, {
+        rollout_decision: 'variant', rollout_variant: winner.id,
+      });
+      state = `completed, "${x.winner}" won`;
+      experimentIds.push({ id: exp.id, endedDaysAgo: x.endedDaysAgo, ageDays: f.ageDays });
+    }
+    console.log(`  experiment on ${f.name} in ${x.env}: ${state}`);
+  }
+
   if (!args['no-backdate']) {
+    const sql = [];
     for (const f of FLAGS) {
       const ago = `now() - interval '${f.ageDays} days'`;
-      psql(`UPDATE features_feature SET created_date = ${ago} WHERE id = ${f.id};`);
-      psql(`UPDATE features_featurestate SET created_at = ${ago}, updated_at = ${ago}
+      sql.push(`UPDATE features_feature SET created_date = ${ago} WHERE id = ${f.id};`);
+      sql.push(`UPDATE features_featurestate SET created_at = ${ago}, updated_at = ${ago}
             WHERE feature_id = ${f.id} AND identity_id IS NULL AND feature_segment_id IS NULL;`);
     }
+    for (const x of experimentIds) {
+      sql.push(`UPDATE experimentation_experiment SET created_at = now() - interval '${x.ageDays} days',
+            started_at = now() - interval '${x.ageDays - 2} days',
+            ended_at = now() - interval '${x.endedDaysAgo} days' WHERE id = ${x.id};`);
+    }
+    await psql(sql);
     console.log('  backdated flags to their demo ages (direct SQL on the local Postgres)');
   }
 

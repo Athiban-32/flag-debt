@@ -42,3 +42,10 @@ jobs:
           src: example
           fail-on: none
           comment: ${{ github.event_name == 'pull_request' }}
+          dashboard: flag-health.html
+
+      - name: Upload flag health dashboard
+        uses: actions/upload-artifact@v4
+        with:
+          name: flag-health-dashboard
+          path: flag-health.html

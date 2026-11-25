@@ -18,13 +18,24 @@ function flag(name, on, ageDays, extra = {}) {
     segmentOverrides: 0, identityOverrides: extra.identityEnv === e ? 1 : 0,
   }]));
   return { id: name, name, type: extra.type ?? 'STANDARD', createdAt: ago(ageDays),
-    archived: Boolean(extra.archived), tags: extra.tags ?? [], states };
+    archived: Boolean(extra.archived), tags: extra.tags ?? [], states,
+    options: extra.options ?? [], experiments: extra.experiments ?? [] };
 }
 const project = {
   name: 'Tern',
   environments: ENVS.map((name, id) => ({ id, name })),
   flags: [
-    flag('install_section', ENVS, 5, { type: 'MULTIVARIATE', value: 'one_liner' }),
+    flag('install_section', ENVS, 40, {
+      type: 'MULTIVARIATE', value: 'one_liner',
+      options: [{ id: 1, value: 'steps' }, { id: 2, value: 'os_picker' }],
+      experiments: [{ environment: 'Production', name: 'install', status: 'completed',
+        decision: 'variant', winnerOptionId: 2, endedAt: ago(21) }],
+    }),
+    flag('signup_cta', ENVS, 4, {
+      type: 'MULTIVARIATE', value: 'Start free',
+      options: [{ id: 3, value: 'Try Tern free' }, { id: 4, value: 'Get started' }],
+      experiments: [{ environment: 'Production', name: 'cta', status: 'running' }],
+    }),
     flag('rate_limit_v2', ['Staging'], 40, { identityEnv: 'Production' }),
     flag('dark_mode', ENVS, 200, { tags: ['permanent'] }),
     flag('new_pricing_page', ENVS, 45),
@@ -42,6 +53,8 @@ test('finds exactly the planted flag debt in example/', async () => {
   const got = findings.map((f) => `${f.rule}:${f.flag}`).sort();
   assert.deepEqual(got, [
     'archived_in_use:old_checkout',
+    'experiment_done:install_section',
+    'experiment_unwired:signup_cta',
     'missing:checkout_v3',
     'missing:onboarding_tuor',
     'prod_only:beta_dashboard',
@@ -50,9 +63,31 @@ test('finds exactly the planted flag debt in example/', async () => {
     'unused:holiday_banner',
     'unused:onboarding_tour',
   ]);
-  assert.equal(summary.errors, 3);
-  assert.equal(summary.warnings, 3);
-  assert.ok(summary.removableRefs >= 3);
+  assert.equal(summary.errors, 4);
+  assert.equal(summary.warnings, 4);
+  const done = findings.find((f) => f.rule === 'experiment_done');
+  assert.equal(done.winner, 'os_picker');
+  assert.deepEqual(done.losers.sort(), ['one_liner', 'steps']);
+  assert.ok(done.refs.some((r) => r.file === 'web/src/install.js'));
+});
+
+test('a finished experiment inside the grace period is not reported yet', async () => {
+  const code = await scanCode(exampleDir);
+  const { findings } = analyse(project, code, { now: NOW, experimentGraceDays: 30 });
+  assert.ok(!findings.some((f) => f.rule === 'experiment_done'));
+});
+
+test('losing variant values only count in files tied to the flag', async () => {
+  const code = {
+    files: 2,
+    literals: new Map([
+      ['steps', [{ file: 'docs/page.js', line: 3 }]],
+      ['install_section', [{ file: 'flags.js', line: 1 }]],
+    ]),
+    sdkKeys: new Map(),
+  };
+  const { findings } = analyse(project, code, { now: NOW });
+  assert.ok(!findings.some((f) => f.rule === 'experiment_done'));
 });
 
 test('constants count as references (FLAGS.pricing = "new_pricing_page")', async () => {
@@ -73,5 +108,5 @@ test('markdown report carries the sticky-comment marker and links', async () => 
   const md = toMarkdown(result, { serverUrl: 'https://github.com', repo: 'o/r', sha: 'abc', prefix: 'example/' });
   assert.ok(md.startsWith(COMMENT_MARKER));
   assert.match(md, /https:\/\/github\.com\/o\/r\/blob\/abc\/example\/web\/src\/checkout\.js#L4/);
-  assert.match(toText(result), /3 errors, 3 warnings/);
+  assert.match(toText(result), /4 errors, 4 warnings/);
 });
