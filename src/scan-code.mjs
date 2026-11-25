@@ -57,13 +57,31 @@ async function* walk(dir, root, ignore, extensions) {
  * @returns {{ files: number, literals: Map<string, {file:string,line:number}[]>,
  *             sdkKeys: Map<string, {file:string,line:number,method:string}[]> }}
  */
+// Calls whose first argument is a constant, e.g. isFeatureEnabled(Feature.NOW_FILE_MANAGEMENT)
+// or flagsmith.hasFeature(FLAGS.pricing). Captures the owner and member names.
+function constantCallRegex(methods) {
+  const names = methods.map((m) => m.replace(/[$]/g, '\\$')).join('|');
+  return new RegExp(`\\b(?:${names})\\s*(?:<[^>]*>)?\\(\\s*(?:[A-Za-z_$][\\w$]*\\.)*([A-Za-z_$][\\w$]*)\\.([A-Za-z_$][\\w$]*)\\s*[,)]`, 'g');
+}
+// A flag-name constant: MEMBER = "key" (TS enum, Python Enum/class) or member: "key" (JS object).
+const CONST_DEF = /^\s*(?:export\s+)?(?:(?:const|let|var|readonly|public|static)\s+)*([A-Za-z_$][\w$]*)\s*[:=]\s*(['"])([\w.:-]+)\2\s*[,;]?\s*(?:(?:#|\/\/).*)?$/;
+// Lines that open a container whose members can be such constants.
+const OWNER_OPEN = /\b(?:enum|class|const|let|var|object|interface|type)\s+([A-Za-z_$][\w$]*)/;
+const MEMBER_USE = /\b([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)\b/g;
+const langOf = (file) => (/\.py$/.test(file) ? 'py' : /\.(go|java|kt|rb|php|cs|swift|dart|rs|exs?)$/.test(file) ? path.extname(file) : 'js');
+
 export async function scanCode(root, opts = {}) {
   const ignore = opts.ignore ?? DEFAULT_IGNORE;
   const extensions = opts.extensions ?? DEFAULT_EXTENSIONS;
-  const callRe = sdkCallRegex(opts.sdkMethods ?? DEFAULT_SDK_METHODS);
+  const methods = opts.sdkMethods ?? DEFAULT_SDK_METHODS;
+  const callRe = sdkCallRegex(methods);
+  const constCallRe = constantCallRegex(methods);
   const extraRes = (opts.extraPatterns ?? []).map((p) => new RegExp(p, 'g'));
   const literals = new Map();
   const sdkKeys = new Map();
+  const defs = new Map(); // "lang:Owner.MEMBER" -> { owner, member, value, file, line, lang }
+  const memberUses = new Set(); // "lang:Owner.MEMBER" seen anywhere in code
+  const constCalls = []; // unresolved constant-argument calls
   const push = (map, key, val) => (map.get(key) ?? map.set(key, []).get(key)).push(val);
   let files = 0;
 
@@ -72,12 +90,26 @@ export async function scanCode(root, opts = {}) {
     if (info.size > MAX_FILE_BYTES) continue;
     const text = await readFile(full, 'utf8');
     const file = path.relative(root, full).split(path.sep).join('/');
+    const lang = langOf(file);
     files++;
     const lines = text.split(/\r?\n/);
+    let owner = null;
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      if (!/['"`]/.test(line)) continue;
       const loc = { file, line: i + 1 };
+      const opened = line.match(OWNER_OPEN);
+      if (opened) owner = opened[1];
+      else if (/^\S/.test(line) && !/^[})\]]/.test(line) && lang === 'py') owner = null; // dedent ends a Python class
+      if (line.includes('.')) {
+        for (const m of line.matchAll(MEMBER_USE)) memberUses.add(`${lang}:${m[1]}.${m[2]}`);
+        for (const m of line.matchAll(constCallRe)) {
+          const method = m[0].slice(0, m[0].indexOf('(')).replace(/<.*$/, '').trim();
+          constCalls.push({ ...loc, lang, owner: m[1], member: m[2], method });
+        }
+      }
+      if (!/['"`]/.test(line)) continue;
+      const def = owner && line.match(CONST_DEF);
+      if (def) defs.set(`${lang}:${owner}.${def[1]}`, { owner, member: def[1], value: def[3], lang, ...loc });
       for (const m of line.matchAll(LITERAL)) push(literals, m[2], loc);
       for (const m of line.matchAll(callRe)) {
         const method = m[0].slice(0, m[0].indexOf('(')).replace(/<.*$/, '').trim();
@@ -91,5 +123,22 @@ export async function scanCode(root, opts = {}) {
       }
     }
   }
-  return { files, literals, sdkKeys };
+
+  // Resolve Owner.MEMBER arguments to the flag key they hold.
+  const flagOwners = new Set();
+  let resolvedCalls = 0;
+  for (const c of constCalls) {
+    const d = defs.get(`${c.lang}:${c.owner}.${c.member}`);
+    if (!d) continue;
+    resolvedCalls++;
+    flagOwners.add(`${c.lang}:${c.owner}`);
+    push(sdkKeys, d.value, { file: c.file, line: c.line, method: c.method, via: `${c.owner}.${c.member}` });
+  }
+
+  // Members of a flag-name enum/object that nothing in the code reads.
+  const unreadConstants = [...defs.entries()]
+    .filter(([id, d]) => flagOwners.has(`${d.lang}:${d.owner}`) && !memberUses.has(id))
+    .map(([, d]) => ({ constant: `${d.owner}.${d.member}`, key: d.value, file: d.file, line: d.line }));
+
+  return { files, literals, sdkKeys, unreadConstants, resolvedCalls };
 }

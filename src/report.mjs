@@ -20,6 +20,7 @@ export function describe(f) {
     return `${won} in ${f.environment}${when}; losing still in code: ${f.losers.join(', ')}`;
   }
   if (f.rule === 'experiment_unwired') return `running in ${f.environments.join(', ')}`;
+  if (f.rule === 'missing' && f.didYouMean) return `did you mean "${f.didYouMean}"?`;
   if (f.ageDays != null && (f.rule === 'stale_on' || f.rule === 'stale_off')) {
     return `unchanged for ${f.ageDays} days`;
   }

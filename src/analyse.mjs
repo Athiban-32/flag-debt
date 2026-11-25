@@ -5,6 +5,8 @@
 //   states: { [envName]: { enabled, value, updatedAt, segmentOverrides, identityOverrides } }
 // }] }
 
+import { closest } from './similar.mjs';
+
 export const RULES = {
   experiment_unwired: {
     severity: 'error',
@@ -175,8 +177,9 @@ export function analyse(project, code, options = {}) {
     }
   }
 
+  const liveNames = project.flags.filter((f) => !f.archived).map((f) => f.name);
   for (const [key, refs] of code.sdkKeys) {
-    if (!byName.has(key)) add('missing', key, { refs });
+    if (!byName.has(key)) add('missing', key, { refs, didYouMean: closest(key, liveNames) });
   }
 
   findings.sort(

@@ -26,6 +26,19 @@ Build on Open Source Flagsmith**. Developed and tested against **self-hosted Fla
 See it on a pull request: [Athiban-32/flag-debt#1](https://github.com/Athiban-32/flag-debt/pull/1)
 fixes the `onboarding_tuor` typo, and the flag-debt comment shows the finding go away.
 
+## Tested on real codebases
+
+flag-debt was run on two public projects that use Flagsmith (details in
+[docs/real-world.md](docs/real-world.md)):
+
+| Project | Files | Flag keys found | Time | Findings |
+|---|---:|---:|---:|---|
+| **Flagsmith's own dashboard** (`Flagsmith/flagsmith`) | 1,292 | 49 | ~5 s | Clean. Showed why custom wrapper names (`sdkMethods`) matter: 10 keys without them, 49 with |
+| **BC Gov Mines Digital Services** (`bcgov/mds`) | 3,127 | 42 | ~6 s | All 142 reads go through a `Feature` enum and were resolved with zero config. **4 flag constants that no code reads**, each checked by hand |
+
+These runs used `--code-only`, since their Flagsmith projects are private. With an API key the
+same scan adds the Flagsmith-side findings.
+
 ## What it finds
 
 | Finding | Severity | Meaning |
@@ -58,7 +71,10 @@ With an organisation API key, it reads:
 | **Experiments**: status, rollout decision, winning variant, start and end dates | Unwired running experiments; finished experiments with losing branches left in code |
 
 On the code side, a flag counts as referenced when its name appears as a quoted string
-(so `FLAGS = { pricing: 'new_pricing_page' }` counts). Missing keys come from direct SDK
+(so `FLAGS = { pricing: 'new_pricing_page' }` counts). Flag-name constants are resolved:
+`isFeatureEnabled(Feature.NEW_SEARCH)` maps to the key that `enum Feature` (TypeScript),
+`class Feature(Enum)` (Python) or a JS object assigns to `NEW_SEARCH`. A missing key also gets a
+"did you mean …?" hint when it is one typo away from a real flag. Missing keys come from SDK
 calls (`hasFeature('x')`, `getExperimentFlag('x')`, `get_feature_value("x")`, OpenFeature's
 `getBooleanValue('x')` and more) in JS/TS, Python, Go, Java, Kotlin, .NET, Ruby, PHP, Swift,
 Dart, Rust and Elixir. Losing experiment variants only count in files that read the flag or
@@ -134,6 +150,7 @@ npx github:Athiban-32/flag-debt --src . --format html --output flag-health.html
 | `--comment` | | Post or update the PR comment (in GitHub Actions) |
 | `--ui-url <url>` | from the API URL | Flagsmith dashboard used for "Open in Flagsmith" links |
 | `--no-color` | colour in a terminal | Plain output (`NO_COLOR` and `FORCE_COLOR` are respected too) |
+| `--code-only` | | No Flagsmith needed: list flag keys in the code, likely typos, and flag constants nothing reads |
 
 ### GitHub Action
 
@@ -196,6 +213,8 @@ src/flagsmith.mjs       read-only Flagsmith Admin API client (flags, states, ove
 src/analyse.mjs         the rules
 src/report.mjs          text / Markdown / JSON output
 src/html.mjs            flag health dashboard
+src/inventory.mjs       --code-only report
+src/similar.mjs         typo detection ("did you mean …?")
 src/github.mjs          sticky PR comment
 action.yml              GitHub Action
 selfhost/               Docker Compose for self-hosted Flagsmith + seed script
