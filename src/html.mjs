@@ -12,7 +12,13 @@ function locHtml(r, link) {
   return `<a href="${esc(href)}"><code>${text}</code></a>`;
 }
 
-export function toHtml({ findings, flags, summary }, { link, describe, generatedAt = new Date() } = {}) {
+// Deep link to the flag in the Flagsmith dashboard (production environment by default).
+function flagsmithHref(flag, fs) {
+  if (!fs?.base || !fs.environmentKey || flag.type === null || flag.id == null) return null;
+  return `${fs.base}/project/${fs.projectId}/environment/${fs.environmentKey}/features?feature=${flag.id}`;
+}
+
+export function toHtml({ findings, flags, summary }, { link, describe, flagsmith, generatedAt = new Date() } = {}) {
   const sevCount = (s) => findings.filter((f) => f.severity === s).length;
   const envs = summary.environments;
   const healthy = flags.filter((f) => !f.rules.length).length;
@@ -48,7 +54,11 @@ export function toHtml({ findings, flags, summary }, { link, describe, generated
       const status = f.rules.length
         ? f.rules.map((r) => `<span class="pill ${RULES[r].severity}">${esc(RULES[r].title)}</span>`).join(' ')
         : '<span class="pill ok">Healthy</span>';
-      return `<tr><td><code>${esc(f.name)}</code> ${badges}</td>${cells}<td class="num">${f.refs}</td><td>${status}</td></tr>`;
+      const href = flagsmithHref(f, flagsmith);
+      const open = href
+        ? `<a class="open" href="${esc(href)}" target="_blank" rel="noopener" title="Open in Flagsmith (${esc(flagsmith.environmentName)})">Open in Flagsmith ↗</a>`
+        : '';
+      return `<tr><td><code>${esc(f.name)}</code> ${badges}</td>${cells}<td class="num">${f.refs}</td><td>${status}</td><td>${open}</td></tr>`;
     }).join('\n');
 
   let section = null;
@@ -85,13 +95,14 @@ code{font:.88em ui-monospace,"Cascadia Code",Consolas,monospace}a{color:inherit}
 .pill{display:inline-block;border-radius:999px;padding:1px 9px;font-size:.78rem;font-weight:600;border:1px solid currentColor;margin:1px 0}
 .pill.error{color:var(--err)}.pill.warn{color:var(--warn)}.pill.info{color:var(--info)}.pill.ok{color:var(--ok)}
 .tag{display:inline-block;font-size:.72rem;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 5px;margin-left:4px}.tag.exp{color:var(--ok)}
+a.open{font-size:.8rem;white-space:nowrap;color:var(--ok);text-decoration:none;border:1px solid var(--line);border-radius:6px;padding:2px 8px}a.open:hover{border-color:var(--ok)}
 ul{padding-left:1.1rem}li{margin:4px 0}footer{margin-top:40px;color:var(--muted);font-size:.8rem}
 </style></head><body><main>
 <h1>Flag health: ${esc(summary.project)}</h1>
 <div class="sub">${summary.flags} flags · ${envs.map(esc).join(', ')} · ${summary.filesScanned} files scanned · stale after ${summary.staleDays} days · generated ${esc(generatedAt.toISOString().slice(0, 16).replace('T', ' '))} UTC</div>
 <div class="cards">${cards}</div>
 <h2>Flags by environment</h2>
-<div class="tablewrap"><table><thead><tr><th>Flag</th>${envs.map((e) => `<th>${esc(e)}</th>`).join('')}<th>Code refs</th><th>Status</th></tr></thead>
+<div class="tablewrap"><table><thead><tr><th>Flag</th>${envs.map((e) => `<th>${esc(e)}</th>`).join('')}<th>Code refs</th><th>Status</th><th></th></tr></thead>
 <tbody>${rows}</tbody></table></div>
 <h2>What to do</h2>
 ${details.join('\n') || '<p>No flag debt found.</p>'}

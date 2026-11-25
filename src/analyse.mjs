@@ -194,6 +194,7 @@ export function analyse(project, code, options = {}) {
   const rulesByFlag = new Map();
   for (const f of findings) (rulesByFlag.get(f.flag) ?? rulesByFlag.set(f.flag, []).get(f.flag)).push(f.rule);
   const flagTable = project.flags.map((flag) => ({
+    id: flag.id,
     name: flag.name,
     type: flag.type,
     archived: flag.archived,

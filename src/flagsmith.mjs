@@ -130,7 +130,7 @@ export class FlagsmithAdmin {
     return {
       id: project.id,
       name: project.name,
-      environments: environments.map((e) => ({ id: e.id, name: e.name })),
+      environments: environments.map((e) => ({ id: e.id, name: e.name, apiKey: e.api_key })),
       flags: [...flags.values()],
     };
   }

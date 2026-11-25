@@ -1,3 +1,5 @@
+import utils.transport
+import utils.session
 from flagsmith import Flagsmith
 
 flagsmith = Flagsmith(environment_key="server-side-key")

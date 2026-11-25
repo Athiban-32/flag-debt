@@ -3,3 +3,4 @@ selfhost/.env.demo
 *.log
 flag-debt-report.*
 /flag-health.html
+config.bat

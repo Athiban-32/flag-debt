@@ -108,5 +108,25 @@ test('markdown report carries the sticky-comment marker and links', async () => 
   const md = toMarkdown(result, { serverUrl: 'https://github.com', repo: 'o/r', sha: 'abc', prefix: 'example/' });
   assert.ok(md.startsWith(COMMENT_MARKER));
   assert.match(md, /https:\/\/github\.com\/o\/r\/blob\/abc\/example\/web\/src\/checkout\.js#L4/);
-  assert.match(toText(result), /4 errors, 4 warnings/);
+  assert.match(toText(result), /4 errors · 4 warnings · 2 info/);
+  assert.match(md, /<details><summary><b>🟡 Fully rolled out<\/b> \(1\)<\/summary>/);
+  assert.match(md, /### 🔴 Missing in Flagsmith/);
+});
+
+test('terminal colour is opt-in and plain output has no escape codes', async () => {
+  const code = await scanCode(exampleDir);
+  const result = analyse(project, code, { now: NOW });
+  assert.ok(!toText(result).includes('\u001b['));
+  assert.ok(toText(result, { color: true }).includes('\u001b[31m'));
+});
+
+test('dashboard links each flag to its page in Flagsmith', async () => {
+  const { toHtml } = await import('../src/html.mjs');
+  const code = await scanCode(exampleDir);
+  const result = analyse(project, code, { now: NOW });
+  const html = toHtml(result, {
+    flagsmith: { base: 'http://localhost:8000', projectId: 3, environmentKey: 'ENVKEY', environmentName: 'Production' },
+  });
+  assert.match(html, /http:\/\/localhost:8000\/project\/3\/environment\/ENVKEY\/features\?feature=new_pricing_page/);
+  assert.ok(!html.includes('feature=checkout_v3'), 'no link for flags missing from Flagsmith');
 });

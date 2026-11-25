@@ -18,7 +18,7 @@ Build on Open Source Flagsmith**. Developed and tested against **self-hosted Fla
 
 - **CLI**: `npx github:Athiban-32/flag-debt`, with no dependencies
 - **GitHub Action**: a sticky PR comment with links to the exact lines, and a check that can block merges
-- **Flag health dashboard**: one self-contained HTML page per run
+- **Flag health dashboard**: one self-contained HTML page per run, with an "Open in Flagsmith" link on every flag
 - **One-command self-hosted demo**: `npm run quickstart`
 
 ![Flag health dashboard](docs/dashboard.jpg)
@@ -132,6 +132,8 @@ npx github:Athiban-32/flag-debt --src . --format html --output flag-health.html
 | `--output <file>` | | Also write the report to a file |
 | `--fail-on error\|warn\|none` | `none` | Exit 1 when findings at this level exist |
 | `--comment` | | Post or update the PR comment (in GitHub Actions) |
+| `--ui-url <url>` | from the API URL | Flagsmith dashboard used for "Open in Flagsmith" links |
+| `--no-color` | colour in a terminal | Plain output (`NO_COLOR` and `FORCE_COLOR` are respected too) |
 
 ### GitHub Action
 
