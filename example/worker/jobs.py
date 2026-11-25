@@ -5,7 +5,7 @@ flagsmith = Flagsmith(environment_key="server-side-key")
 
 def send_welcome_email(user_id: str) -> None:
     flags = flagsmith.get_identity_flags(user_id)
-    if flags.is_feature_enabled("onboarding_tuor"):
+    if flags.is_feature_enabled("onboarding_tour"):
         queue("onboarding_tour_email", user_id)
     if flags.is_feature_enabled("rate_limit_v2"):
         queue("rate_limited_digest", user_id)
