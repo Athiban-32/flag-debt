@@ -14,6 +14,9 @@
   "engines": {
     "node": ">=20.6"
   },
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  },
   "scripts": {
     "quickstart": "docker compose -f selfhost/docker-compose.yml up -d --wait flagsmith && node selfhost/seed.mjs && node --env-file=selfhost/.env.demo bin/flag-debt.mjs --src example --format html --output flag-health.html",
     "selfhost:up": "docker compose -f selfhost/docker-compose.yml up -d --wait flagsmith",

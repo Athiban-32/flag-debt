@@ -73,7 +73,8 @@ dynamic lookup (`Feature[featureFlag]` in `NOWSideMenu.tsx`) only ever receives
 `NOW_FILE_MANAGEMENT` and `NOTICE_OF_WORK_TIER`, so it doesn't change the result.
 
 These are small cleanup items, not bugs: an unread constant is a flag the code no longer (or never)
-uses on that side of the stack. With Flagsmith access, the next question flag-debt answers is
+uses on that side of the stack. They were reported to the MDS team in
+[bcgov/mds#4062](https://github.com/bcgov/mds/issues/4062). With Flagsmith access, the next question flag-debt answers is
 whether `flagsmith` and `verifiable_credentials` still exist in Flagsmith and can be archived.
 
 ## Limits seen on real code

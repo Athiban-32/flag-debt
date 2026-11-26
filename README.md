@@ -34,7 +34,7 @@ flag-debt was run on two public projects that use Flagsmith (details in
 | Project | Files | Flag keys found | Time | Findings |
 |---|---:|---:|---:|---|
 | **Flagsmith's own dashboard** (`Flagsmith/flagsmith`) | 1,292 | 49 | ~5 s | Clean. Showed why custom wrapper names (`sdkMethods`) matter: 10 keys without them, 49 with |
-| **BC Gov Mines Digital Services** (`bcgov/mds`) | 3,127 | 42 | ~6 s | All 142 reads go through a `Feature` enum and were resolved with zero config. **4 flag constants that no code reads**, each checked by hand |
+| **BC Gov Mines Digital Services** (`bcgov/mds`) | 3,127 | 42 | ~6 s | All 142 reads go through a `Feature` enum and were resolved with zero config. **4 flag constants that no code reads**, each checked by hand and reported in [bcgov/mds#4062](https://github.com/bcgov/mds/issues/4062) |
 
 These runs used `--code-only`, since their Flagsmith projects are private. With an API key the
 same scan adds the Flagsmith-side findings.
